@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Parking Dashboard - Live CCTV Monitoring</title>
+  <meta name="description" content="Real-time parking lot monitoring with AI-powered occupancy detection, motion alerts, and prediction charts.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0a; --card: #111113; --card-hover: #18181b;
+      --border: #27272a; --text: #fafafa; --muted: #a1a1aa;
+      --green: #22c55e; --red: #ef4444; --amber: #f59e0b;
+      --blue: #3b82f6; --purple: #a855f7;
+      --radius: 12px;
+    }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    .container { max-width: 1280px; margin: 0 auto; padding: 24px 16px; }
+
+    /* Header */
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .header h1 { font-size: 24px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .header h1 span.icon { font-size: 28px; }
+    .api-config { display: flex; gap: 8px; align-items: center; }
+    .api-config input { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: 13px; width: 280px; }
+    .api-config input::placeholder { color: var(--muted); }
+    .btn { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+    .btn-primary { background: var(--blue); color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-success { background: var(--green); color: white; }
+    .btn-success:hover { background: #16a34a; }
+    .btn-outline { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-outline:hover { color: var(--text); border-color: var(--text); }
+    .btn-outline.active { color: var(--text); border-color: var(--blue); background: rgba(59,130,246,0.1); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Camera Tabs */
+    .tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+    .tab { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+    .tab.active { background: var(--blue); color: white; border-color: var(--blue); }
+    .tab:hover:not(.active) { color: var(--text); border-color: var(--text); }
+    .add-camera-wrap { display: flex; gap: 6px; align-items: center; }
+    .add-camera-wrap input { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: 13px; width: 260px; display: none; }
+    .add-camera-wrap input.show { display: block; }
+
+    /* Stats Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+    @media (max-width: 640px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .stat-card .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .stat-card .value { font-size: 28px; font-weight: 700; }
+    .stat-card .value.green { color: var(--green); }
+    .stat-card .value.red { color: var(--red); }
+    .stat-card .value.blue { color: var(--blue); }
+    .stat-card .value.amber { color: var(--amber); }
+
+    /* Main Layout */
+    .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .card-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .card-header h3 { font-size: 15px; font-weight: 600; }
+    .card-body { padding: 16px; }
+
+    /* Camera View */
+    .camera-view { position: relative; }
+    .camera-view img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; }
+    .camera-controls { display: flex; gap: 8px; align-items: center; }
+    .camera-placeholder { width: 100%; aspect-ratio: 16/10; display: flex; align-items: center; justify-content: center; background: #0d0d0d; color: var(--muted); font-size: 14px; }
+    .loading-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Sub Tabs */
+    .sub-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+    .sub-tab { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--muted); background: transparent; border: none; transition: all 0.2s; }
+    .sub-tab.active { background: var(--card-hover); color: var(--text); }
+    .sub-tab:hover:not(.active) { color: var(--text); }
+
+    /* Chart */
+    .chart-container { height: 200px; }
+    .chart-empty { height: 200px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
+
+    /* Space Grid */
+    .space-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 6px; max-height: 220px; overflow-y: auto; }
+    .space-cell { padding: 8px 4px; border-radius: 6px; text-align: center; font-size: 11px; font-weight: 600; }
+    .space-cell.free { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .space-cell.occ { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+    /* Alerts */
+    .alert-list { max-height: 220px; overflow-y: auto; }
+    .alert-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .alert-item:last-child { border: none; }
+    .alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .alert-dot.motion { background: var(--amber); }
+    .alert-dot.info { background: var(--blue); }
+    .alert-time { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+
+    /* Prediction */
+    .prediction-card { margin-top: 16px; }
+    .prediction-bar { height: 8px; border-radius: 4px; background: var(--border); margin: 10px 0; overflow: hidden; }
+    .prediction-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+    .prediction-label { font-size: 13px; display: flex; justify-content: space-between; }
+    .prediction-rec { font-size: 12px; color: var(--muted); margin-top: 8px; padding: 10px; background: rgba(59,130,246,0.08); border-radius: 8px; border-left: 3px solid var(--blue); }
+
+    /* Auto-refresh */
+    .auto-wrap { display: flex; align-items: center; gap: 8px; }
+    .toggle { width: 36px; height: 20px; border-radius: 10px; background: var(--border); cursor: pointer; position: relative; transition: background 0.2s; }
+    .toggle.on { background: var(--green); }
+    .toggle::after { content: ''; width: 16px; height: 16px; border-radius: 50%; background: white; position: absolute; top: 2px; left: 2px; transition: transform 0.2s; }
+    .toggle.on::after { transform: translateX(16px); }
+    .interval-select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 6px; font-size: 12px; }
+
+    /* Timestamp */
+    .timestamp { font-size: 11px; color: var(--muted); margin-top: 12px; text-align: center; }
+
+    /* Footer */
+    .footer { text-align: center; margin-top: 32px; padding: 16px; color: var(--muted); font-size: 12px; }
+    .footer a { color: var(--blue); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1><span class="icon">🅿️</span> Smart Parking Dashboard</h1>
+      <div class="api-config">
+        <input type="password" id="apiKeyInput" placeholder="Enter your CodeWords API key..." />
+        <button class="btn btn-primary" onclick="saveApiKey()">Save</button>
+      </div>
+    </div>
+
+    <!-- Camera Tabs -->
+    <div class="tabs" id="cameraTabs">
+      <div class="tab active" data-url="https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=1280&q=80" data-name="Lot A - Main Entrance" onclick="selectCamera(this)">Lot A - Main Entrance</div>
+      <div class="tab" data-url="https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?w=1280&q=80" data-name="Lot B - East Wing" onclick="selectCamera(this)">Lot B - East Wing</div>
+      <div class="tab" data-url="https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=1280&q=80" data-name="Lot C - Rooftop" onclick="selectCamera(this)">Lot C - Rooftop</div>
+      <div class="add-camera-wrap">
+        <input type="text" id="customCameraUrl" placeholder="Paste camera image URL..." />
+        <button class="btn btn-outline" onclick="toggleAddCamera()">+ Add</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Total Spaces</div><div class="value blue" id="totalSpaces">--</div></div>
+      <div class="stat-card"><div class="label">Available</div><div class="value green" id="availableSpaces">--</div></div>
+      <div class="stat-card"><div class="label">Occupied</div><div class="value red" id="occupiedSpaces">--</div></div>
+      <div class="stat-card"><div class="label">Occupancy</div><div class="value amber" id="occupancyPct">--</div></div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="main-grid">
+      <!-- Camera Panel -->
+      <div class="card">
+        <div class="card-header">
+          <h3 id="cameraTitle">Lot A - Main Entrance</h3>
+          <div class="camera-controls">
+            <div class="auto-wrap">
+              <span style="font-size:12px;color:var(--muted)">Auto</span>
+              <div class="toggle" id="autoToggle" onclick="toggleAuto()"></div>
+              <select class="interval-select" id="intervalSelect" onchange="changeInterval()">
+                <option value="10000">10s</option>
+                <option value="15000" selected>15s</option>
+                <option value="30000">30s</option>
+                <option value="60000">60s</option>
+              </select>
+            </div>
+            <button class="btn btn-success" id="analyzeBtn" onclick="analyze()">Analyze Now</button>
+          </div>
+        </div>
+        <div class="camera-view" id="cameraView">
+          <img id="cameraImg" src="https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=1280&q=80" alt="Camera feed" />
+          <div class="loading-overlay" id="loadingOverlay" style="display:none"><div class="spinner"></div></div>
+        </div>
+        <div class="timestamp" id="analysisTimestamp"></div>
+      </div>
+
+      <!-- Info Panel -->
+      <div>
+        <!-- Trend / Spaces / Alerts -->
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-body">
+            <div class="sub-tabs">
+              <button class="sub-tab active" onclick="switchSubTab(this, 'trend')">Trend</button>
+              <button class="sub-tab" onclick="switchSubTab(this, 'spaces')">Spaces</button>
+              <button class="sub-tab" onclick="switchSubTab(this, 'alerts')">Alerts</button>
+            </div>
+            <div id="trendPanel">
+              <div class="chart-container"><canvas id="trendChart"></canvas></div>
+              <div class="chart-empty" id="chartEmpty">Analyze a camera to see trends</div>
+            </div>
+            <div id="spacesPanel" style="display:none">
+              <div class="space-grid" id="spaceGrid"></div>
+              <div class="chart-empty" id="spaceEmpty">Analyze a camera to see space map</div>
+            </div>
+            <div id="alertsPanel" style="display:none">
+              <div class="alert-list" id="alertList"></div>
+              <div class="chart-empty" id="alertEmpty">No alerts yet</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Prediction -->
+        <div class="card prediction-card">
+          <div class="card-header"><h3>🔮 Prediction</h3></div>
+          <div class="card-body" id="predictionBody">
+            <div class="chart-empty">Analyze a camera to see predictions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      Built with ❤️ using <a href="https://codewords.agemo.ai" target="_blank">CodeWords by Agemo</a>
+    </div>
+  </div>
+
+  <script>
+    // === CONFIG ===
+    const API_URL = 'https://runtime.codewords.ai/run/smart_parking_analyzer_68f903f9';
+    let apiKey = localStorage.getItem('cw_api_key') || '';
+    let currentCamera = { url: 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=1280&q=80', name: 'Lot A - Main Entrance' };
+    let autoInterval = null;
+    let trendData = [];
+    let alerts = [];
+    let chart = null;
+    let previousImageUrl = null;
+
+    // Init
+    document.addEventListener('DOMContentLoaded', () => {
+      if (apiKey) document.getElementById('apiKeyInput').value = '••••••••';
+      initChart();
+    });
+
+    // === API KEY ===
+    function saveApiKey() {
+      const input = document.getElementById('apiKeyInput');
+      if (input.value && input.value !== '••••••••') {
+        apiKey = input.value.trim();
+        localStorage.setItem('cw_api_key', apiKey);
+        input.value = '••••••••';
+        alert('API key saved!');
+      }
+    }
+
+    // === CAMERA TABS ===
+    function selectCamera(el) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      currentCamera = { url: el.dataset.url, name: el.dataset.name };
+      document.getElementById('cameraTitle').textContent = currentCamera.name;
+      document.getElementById('cameraImg').src = currentCamera.url;
+      previousImageUrl = null;
+      trendData = [];
+      updateChart();
+    }
+
+    function toggleAddCamera() {
+      const input = document.getElementById('customCameraUrl');
+      if (input.classList.contains('show')) {
+        const url = input.value.trim();
+        if (url) {
+          const tab = document.createElement('div');
+          tab.className = 'tab';
+          tab.dataset.url = url;
+          tab.dataset.name = 'Custom Camera';
+          tab.textContent = 'Custom Camera';
+          tab.onclick = function() { selectCamera(this); };
+          document.getElementById('cameraTabs').insertBefore(tab, document.querySelector('.add-camera-wrap'));
+          input.value = '';
+          selectCamera(tab);
+        }
+        input.classList.remove('show');
+      } else {
+        input.classList.add('show');
+        input.focus();
+      }
+    }
+
+    // === ANALYSIS ===
+    async function analyze() {
+      if (!apiKey) { alert('Please enter your CodeWords API key first!'); return; }
+      const btn = document.getElementById('analyzeBtn');
+      const overlay = document.getElementById('loadingOverlay');
+      btn.disabled = true; btn.textContent = 'Analyzing...';
+      overlay.style.display = 'flex';
+
+      try {
+        const payload = { camera_image: currentCamera.url };
+        if (previousImageUrl) payload.previous_frame = previousImageUrl;
+
+        const resp = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+          body: JSON.stringify(payload)
+        });
+
+        if (!resp.ok) throw new Error('Backend error: ' + resp.status);
+        const data = await resp.json();
+        updateDashboard(data);
+        previousImageUrl = currentCamera.url;
+      } catch (err) {
+        alert('Analysis failed: ' + err.message);
+        console.error(err);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Analyze Now';
+        overlay.style.display = 'none';
+      }
+    }
+
+    function updateDashboard(data) {
+      // Stats
+      document.getElementById('totalSpaces').textContent = data.total_spaces;
+      document.getElementById('availableSpaces').textContent = data.available_spaces;
+      document.getElementById('occupiedSpaces').textContent = data.occupied_spaces;
+      document.getElementById('occupancyPct').textContent = data.occupancy_percentage.toFixed(1) + '%';
+
+      // Image
+      if (data.annotated_image_url) document.getElementById('cameraImg').src = data.annotated_image_url;
+
+      // Timestamp
+      const ts = new Date(data.analysis_timestamp);
+      document.getElementById('analysisTimestamp').textContent = 'Last analysis: ' + ts.toLocaleTimeString() + ' (' + data.processing_time_ms + 'ms)';
+
+      // Trend
+      trendData.push({ time: ts.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}), pct: data.occupancy_percentage });
+      if (trendData.length > 20) trendData.shift();
+      updateChart();
+
+      // Spaces
+      updateSpaces(data.spaces);
+
+      // Alerts
+      if (data.motion_detected) {
+        alerts.unshift({ type: 'motion', msg: 'Motion detected (' + data.motion_zones.length + ' zones)', time: ts.toLocaleTimeString() });
+      }
+      alerts.unshift({ type: 'info', msg: data.occupancy_percentage.toFixed(1) + '% occupied (' + data.available_spaces + ' free)', time: ts.toLocaleTimeString() });
+      if (alerts.length > 30) alerts = alerts.slice(0, 30);
+      updateAlerts();
+
+      // Prediction
+      updatePrediction(data.prediction);
+    }
+
+    // === CHART ===
+    function initChart() {
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'Occupancy %', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#3b82f6' }] },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 100, ticks: { color: '#71717a', callback: v => v + '%' }, grid: { color: '#27272a' } }, x: { ticks: { color: '#71717a', maxRotation: 0 }, grid: { display: false } } }, plugins: { legend: { display: false } } }
+      });
+      document.getElementById('trendChart').style.display = 'none';
+    }
+
+    function updateChart() {
+      if (trendData.length === 0) {
+        document.getElementById('trendChart').style.display = 'none';
+        document.getElementById('chartEmpty').style.display = 'flex';
+        return;
+      }
+      document.getElementById('trendChart').style.display = 'block';
+      document.getElementById('chartEmpty').style.display = 'none';
+      chart.data.labels = trendData.map(d => d.time);
+      chart.data.datasets[0].data = trendData.map(d => d.pct);
+      chart.update();
+    }
+
+    // === SPACES ===
+    function updateSpaces(spaces) {
+      const grid = document.getElementById('spaceGrid');
+      const empty = document.getElementById('spaceEmpty');
+      if (!spaces || spaces.length === 0) { empty.style.display = 'flex'; grid.innerHTML = ''; return; }
+      empty.style.display = 'none';
+      grid.innerHTML = spaces.map(s => '<div class="space-cell ' + (s.occupied ? 'occ' : 'free') + '">' + s.id + '<br><span style="font-size:9px">' + (s.occupied ? 'OCC' : 'FREE') + '</span></div>').join('');
+    }
+
+    // === ALERTS ===
+    function updateAlerts() {
+      const list = document.getElementById('alertList');
+      const empty = document.getElementById('alertEmpty');
+      if (alerts.length === 0) { empty.style.display = 'flex'; list.innerHTML = ''; return; }
+      empty.style.display = 'none';
+      list.innerHTML = alerts.map(a => '<div class="alert-item"><span class="alert-dot ' + a.type + '"></span><span>' + a.msg + '</span><span class="alert-time">' + a.time + '</span></div>').join('');
+    }
+
+    // === PREDICTION ===
+    function updatePrediction(p) {
+      if (!p) return;
+      const colors = { low_demand: '#22c55e', moderate_demand: '#f59e0b', high_demand: '#ef4444', near_full: '#dc2626' };
+      const labels = { low_demand: 'Low Demand', moderate_demand: 'Moderate', high_demand: 'High Demand', near_full: 'Near Full' };
+      const color = colors[p.trend] || '#3b82f6';
+      document.getElementById('predictionBody').innerHTML = '<div class="prediction-label"><span>' + (labels[p.trend] || p.trend) + '</span><span style="color:' + color + ';font-weight:600">' + p.current_occupancy_pct.toFixed(1) + '%</span></div><div class="prediction-bar"><div class="prediction-fill" style="width:' + Math.min(100, p.current_occupancy_pct) + '%;background:' + color + '"></div></div><div style="font-size:12px;color:var(--muted)">Est. available in 5min: <strong style="color:var(--text)">' + p.predicted_available_in_5min + ' spaces</strong></div><div class="prediction-rec">' + p.recommendation + '</div>';
+    }
+
+    // === SUB TABS ===
+    function switchSubTab(el, panel) {
+      el.parentElement.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      ['trendPanel', 'spacesPanel', 'alertsPanel'].forEach(id => document.getElementById(id).style.display = 'none');
+      document.getElementById(panel + 'Panel').style.display = 'block';
+    }
+
+    // === AUTO-REFRESH ===
+    function toggleAuto() {
+      const toggle = document.getElementById('autoToggle');
+      if (autoInterval) {
+        clearInterval(autoInterval);
+        autoInterval = null;
+        toggle.classList.remove('on');
+      } else {
+        const ms = parseInt(document.getElementById('intervalSelect').value);
+        toggle.classList.add('on');
+        analyze();
+        autoInterval = setInterval(analyze, ms);
+      }
+    }
+    function changeInterval() {
+      if (autoInterval) { clearInterval(autoInterval); const ms = parseInt(document.getElementById('intervalSelect').value); autoInterval = setInterval(analyze, ms); }
+    }
+  </script>
+</body>
+</html>
